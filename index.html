@@ -1,0 +1,901 @@
+<!doctype html>
+<html lang="tr" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sunum Yarışması Puanlama</title>
+
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lucide@0.263.0/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    * { font-family: 'Outfit', sans-serif; }
+
+    .bg-animated {
+      position: fixed;
+      inset: 0;
+      background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 25%, #bfdbfe 50%, #93c5fd 75%, #ffffff 100%);
+      background-size: 400% 400%;
+      animation: gradientShift 15s ease infinite;
+      z-index: -1;
+    }
+    @keyframes gradientShift {
+      0%, 100% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+    }
+
+    .bg-orbs { position: fixed; inset: 0; z-index: -2; }
+    .orb { position: absolute; border-radius: 50%; filter: blur(60px); opacity: 0.15; }
+    .orb-1 { width: 300px; height: 300px; top: -10%; right: -5%; background: radial-gradient(circle, #3b82f6, #1d4ed8); animation: orbFloat 20s ease-in-out infinite; }
+    .orb-2 { width: 250px; height: 250px; bottom: -8%; left: -5%; background: radial-gradient(circle, #60a5fa, #1e40af); animation: orbFloat 25s ease-in-out infinite reverse; }
+    .orb-3 { width: 200px; height: 200px; top: 30%; left: 5%; background: radial-gradient(circle, #93c5fd, #3b82f6); animation: orbFloat 22s ease-in-out infinite 2s; }
+
+    @keyframes orbFloat {
+      0%, 100% { transform: translate(0, 0); }
+      25% { transform: translate(30px, -40px); }
+      50% { transform: translate(-10px, 30px); }
+      75% { transform: translate(20px, 15px); }
+    }
+
+    .vote-card { transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); position: relative; overflow: hidden; }
+    .vote-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+      transition: left 0.5s ease;
+    }
+    .vote-card:hover::before { left: 100%; }
+    .vote-card:hover { transform: translateY(-8px) scale(1.02); box-shadow: 0 20px 48px rgba(37, 99, 235, 0.2); }
+
+    .fade-in { animation: fadeIn 0.6s ease forwards; opacity: 0; }
+    @keyframes fadeIn { to { opacity: 1; } }
+
+    .toast-slide { animation: toastSlide 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
+    @keyframes toastSlide {
+      from { transform: translateY(120%); opacity: 0; }
+      to   { transform: translateY(0); opacity: 1; }
+    }
+
+    .bar-fill { transition: width 1s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+    button { position: relative; overflow: hidden; }
+    button::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 0;
+      height: 0;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.5);
+      transform: translate(-50%, -50%);
+      transition: width 0.6s, height 0.6s;
+    }
+    button:active::after { width: 300px; height: 300px; }
+
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: rgba(59, 130, 246, 0.05); }
+    ::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #3b82f6, #2563eb); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, #2563eb, #1d4ed8); }
+
+    .card-shine { position: relative; background: linear-gradient(135deg, #ffffff 0%, #f0f9ff 100%); }
+    .medal-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      font-size: 14px;
+      animation: medalBounce 0.6s ease;
+    }
+    @keyframes medalBounce {
+      0% { transform: scale(0.5) rotate(-45deg); }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1) rotate(0deg); }
+    }
+
+    /* Range Slider Styling */
+    input[type=range] {
+      -webkit-appearance: none;
+      width: 100%;
+      background: transparent;
+    }
+    input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      height: 20px;
+      width: 20px;
+      border-radius: 50%;
+      background: #2563eb;
+      cursor: pointer;
+      margin-top: -6px;
+      box-shadow: 0 2px 6px rgba(37,99,235,0.4);
+    }
+    input[type=range]::-webkit-slider-runnable-track {
+      width: 100%;
+      height: 8px;
+      cursor: pointer;
+      background: #bfdbfe;
+      border-radius: 4px;
+    }
+    
+    body { box-sizing: border-box; }
+  </style>
+</head>
+<body class="h-full bg-white">
+  <div class="bg-orbs">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+  <div class="bg-animated"></div>
+
+  <div id="app" class="h-full w-full overflow-auto relative z-0">
+    <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 hidden"></div>
+    <footer class="fixed bottom-0 left-0 w-full z-40 bg-white/70 backdrop-blur-md border-t border-blue-100 shadow-[0_-4px_20px_rgba(37,99,235,0.05)]">
+      <div class="max-w-5xl mx-auto px-4 py-3 text-center flex items-center justify-center gap-2">
+        <p class="text-sm text-gray-500 font-medium">
+          Made by <span class="text-blue-700 font-extrabold tracking-wide drop-shadow-sm">Oğuzhan YAVAŞ</span>
+        </p>
+      </div>
+    </footer>
+
+    <header class="w-full bg-gradient-to-r from-blue-700 via-blue-600 to-blue-800 shadow-lg relative overflow-hidden">
+      <div class="absolute inset-0 opacity-10">
+        <div class="absolute top-0 right-0 w-64 h-64 bg-white rounded-full -translate-y-1/2 translate-x-1/2"></div>
+        <div class="absolute bottom-0 left-0 w-48 h-48 bg-white rounded-full translate-y-1/2 -translate-x-1/2"></div>
+      </div>
+
+      <div class="relative max-w-5xl mx-auto px-4 py-6 flex items-center gap-4">
+        <div class="flex-shrink-0 w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-md overflow-hidden">
+          <img src="294654446_733873017886845_9197296402447984950_n.png" alt="Logo" class="w-full h-full object-cover">
+        </div>
+
+        <div class="flex-1">
+          <h1 id="mainTitle" class="text-white font-bold text-xl md:text-2xl tracking-tight">Sunum Yarışması Puanlama</h1>
+          <p id="subtitle" class="text-blue-200 text-sm mt-0.5">Kula Meslek Yüksekokulu</p>
+        </div>
+
+        <button id="adminToggleBtn" onclick="toggleAdmin()" class="px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg transition flex items-center gap-2 font-medium text-sm border border-white/30" title="Admin Paneli">
+          <i data-lucide="shield" style="width:16px;height:16px;"></i>
+          <span class="hidden sm:inline">Yönetici Girişi</span>
+        </button>
+      </div>
+    </header>
+
+    <div id="votingView">
+    <div class="max-w-5xl mx-auto px-4 pt-8 pb-24">
+        <div class="flex flex-wrap gap-3 mb-8">
+          <div class="bg-white rounded-xl px-5 py-3 shadow-sm border border-blue-100 flex items-center gap-2">
+            <i data-lucide="users" style="width:18px;height:18px;color:#2563eb;"></i>
+            <span class="text-sm text-gray-500">Yarışmacı:</span>
+            <span id="contestantCount" class="font-bold text-blue-700">0</span>
+          </div>
+          <div class="bg-white rounded-xl px-5 py-3 shadow-sm border border-blue-100 flex items-center gap-2">
+            <i data-lucide="bar-chart-2" style="width:18px;height:18px;color:#2563eb;"></i>
+            <span class="text-sm text-gray-500">Toplam Puan Dağılımı:</span>
+            <span id="totalVotes" class="font-bold text-blue-700">0</span>
+          </div>
+        </div>
+
+        <div id="studentStep1" class="bg-white rounded-2xl shadow-md border border-blue-100 p-6 mb-8">
+          <h2 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+            <i data-lucide="mouse-pointer" style="width:20px;height:20px;color:#2563eb;"></i>
+            Öğrenci Kontrolü
+          </h2>
+
+          <div class="flex flex-col sm:flex-row gap-3">
+            <input id="studentIdInput" type="text" placeholder="Okul numaranızı girin..." class="flex-1 px-4 py-3 rounded-xl border-2 border-blue-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition text-gray-700" maxlength="20">
+            <button id="studentIdSubmit" onclick="submitStudentId()" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition shadow-md hover:shadow-lg">
+              Devam Et
+            </button>
+          </div>
+
+          <p id="voteMessage" class="text-sm mt-2 text-gray-400"></p>
+        </div>
+
+        <div id="studentStep2" class="bg-white rounded-2xl shadow-md border border-blue-100 p-6 mb-8 hidden">
+          <h2 class="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+            <i data-lucide="star" style="width:20px;height:20px;color:#2563eb;"></i>
+            Puanlamanızı Tamamlayın
+          </h2>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+            <input id="studentFullName" type="text" placeholder="Ad Soyad" class="px-4 py-3 rounded-xl border-2 border-blue-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition text-gray-700">
+            <select id="presentationSelect" class="px-4 py-3 rounded-xl border-2 border-blue-200 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition text-gray-700 bg-white">
+              <option value="">Değerlendirilecek Sunumu Seçin...</option>
+            </select>
+          </div>
+
+          <div id="criteriaSection" class="bg-blue-50/50 p-5 rounded-xl border border-blue-100 mb-6 hidden">
+            <h3 class="font-medium text-gray-700 mb-4 border-b border-blue-200 pb-2">Değerlendirme Kriterleri (1-10 Arası Puanlayın)</h3>
+            <div id="criteriaContainer" class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+              </div>
+            
+            <div class="mt-6 p-4 bg-blue-600 rounded-xl text-white flex justify-between items-center shadow-inner">
+                <span class="font-semibold">Toplam Vereceğiniz Puan:</span>
+                <span id="liveTotalScore" class="text-2xl font-black">50</span>
+            </div>
+          </div>
+
+          <div class="mt-4 flex flex-col sm:flex-row gap-3">
+            <button id="voteSubmitBtn" onclick="submitVote()" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition shadow-md hover:shadow-lg disabled:opacity-50">
+              Puanları Kaydet
+            </button>
+            <button onclick="resetStudentFlow()" class="px-6 py-3 bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold rounded-xl transition">
+              Temizle
+            </button>
+          </div>
+
+          <p id="voteSubmitMessage" class="text-sm mt-2 text-gray-400"></p>
+        </div>
+
+        <div id="contestantGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"></div>
+
+        <div id="emptyState" class="text-center py-16 hidden">
+          <i data-lucide="inbox" style="width:48px;height:48px;color:#93c5fd;margin:0 auto;display:block;"></i>
+          <p class="text-gray-400 mt-4 text-lg">Henüz yarışmacı eklenmedi</p>
+          <p class="text-gray-300 text-sm mt-1">Admin panelinden yarışmacı ekleyebilirsiniz</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="adminPanel" class="hidden">
+     <div class="max-w-5xl mx-auto px-4 pt-8 pb-24">
+        <div id="adminLogin" class="bg-white rounded-2xl shadow-md border border-blue-100 p-8 max-w-md mx-auto">
+          <h2 class="text-xl font-bold text-gray-800 mb-1 flex items-center gap-2">
+            <i data-lucide="shield" style="width:22px;height:22px;color:#2563eb;"></i>
+            Admin Girişi
+          </h2>
+          <p class="text-gray-400 text-sm mb-6">Yönetim paneline erişmek için şifreyi girin</p>
+
+          <input id="adminPassInput" type="password" placeholder="Admin şifresi..." class="w-full px-4 py-3 rounded-xl border-2 border-blue-200 focus:border-blue-500 outline-none transition mb-3">
+          <p id="adminError" class="text-red-500 text-sm mb-3 hidden">Yanlış şifre!</p>
+
+          <button onclick="loginAdmin()" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition">Giriş</button>
+          <button onclick="toggleAdmin()" class="w-full py-2 text-gray-400 hover:text-gray-600 text-sm mt-2 transition">← Geri Dön</button>
+        </div>
+
+        <div id="adminDashboard" class="hidden">
+          <div class="flex items-center justify-between mb-6">
+            <h2 class="text-2xl font-bold text-gray-800">Admin Paneli</h2>
+            <button onclick="logoutAdmin()" class="text-gray-400 hover:text-gray-600 text-sm flex items-center gap-1 transition">
+              <i data-lucide="log-out" style="width:16px;height:16px;"></i> Çıkış
+            </button>
+          </div>
+
+          <div class="bg-white rounded-2xl shadow-md border border-blue-100 p-6 mb-6">
+            <h3 class="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+              <i data-lucide="user-plus" style="width:18px;height:18px;color:#2563eb;"></i>
+              Yarışmacı Ekle
+            </h3>
+
+            <div class="flex flex-col sm:flex-row gap-3">
+              <input id="newContestantName" type="text" placeholder="Yarışmacı adı..." class="flex-1 px-4 py-3 rounded-xl border-2 border-blue-200 focus:border-blue-500 outline-none transition">
+              <input id="newContestantTopic" type="text" placeholder="Sunum adı..." class="flex-1 px-4 py-3 rounded-xl border-2 border-blue-200 focus:border-blue-500 outline-none transition">
+              <button id="addContestantBtn" onclick="addContestant()" class="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition whitespace-nowrap">
+                Ekle
+              </button>
+            </div>
+            <p id="addMessage" class="text-sm mt-2 text-gray-400"></p>
+          </div>
+
+          <div class="bg-white rounded-2xl shadow-md border border-blue-100 p-6 mb-6">
+            <h3 class="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+              <i data-lucide="list" style="width:18px;height:18px;color:#2563eb;"></i>
+              Yarışmacılar
+            </h3>
+            <div id="adminContestantList" class="space-y-3"></div>
+            <p id="adminEmpty" class="text-gray-400 text-center py-6 hidden">Henüz yarışmacı yok</p>
+          </div>
+
+          <div class="bg-white rounded-2xl shadow-md border border-blue-100 p-6 mb-6">
+            <h3 class="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+              <i data-lucide="trophy" style="width:18px;height:18px;color:#2563eb;"></i>
+              Güncel Puan Tablosu
+            </h3>
+            <div id="resultsChart" class="space-y-4"></div>
+            <p id="resultsEmpty" class="text-gray-400 text-center py-6 hidden">Henüz puanlama yapılmamış</p>
+          </div>
+
+          <div class="bg-white rounded-2xl shadow-md border border-red-100 p-6">
+            <h3 class="font-semibold text-red-600 mb-3 flex items-center gap-2">
+              <i data-lucide="alert-triangle" style="width:18px;height:18px;"></i>
+              Tehlikeli Bölge
+            </h3>
+
+            <div id="resetSection">
+              <button onclick="showResetConfirm()" class="px-5 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-xl transition text-sm font-medium">
+                Tüm Puanları Sıfırla
+              </button>
+            </div>
+
+            <div id="resetConfirm" class="hidden flex items-center gap-3 mt-3">
+              <span class="text-red-500 text-sm font-medium">Emin misiniz? Tüm veriler silinecek!</span>
+              <button onclick="resetAllVotes()" class="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium">Evet, Sıfırla</button>
+              <button onclick="hideResetConfirm()" class="px-4 py-2 bg-gray-200 text-gray-600 rounded-lg text-sm font-medium">İptal</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // NOT: Yeni veritabanı yapısında "cast_score" adında yeni bir RPC fonskiyonu 
+  // veya doğrudan tabloya insert yapacak bir yapıya ihtiyacınız olacak.
+
+  const SUPABASE_URL = "https://zcmnhrpsyzilepmfrqxr.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpjbW5ocnBzeXppbGVwbWZycXhyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY0MjU4OTUsImV4cCI6MjA5MjAwMTg5NX0.Rp3PYZ4ZjLSijMsjiMrlvaseYET9y4foSHZwHx3djW0";
+  const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  const ADMIN_PASS = "KULA2026";
+
+  const CRITERIA = [
+    { id: 1, name: "Konu seçimi" },
+    { id: 2, name: "Kendini tanıtma" },
+    { id: 3, name: "Slayt sunumu" },
+    { id: 4, name: "Sahne dekoru uygunluğu" },
+    { id: 5, name: "Sahne kullanımı" },
+    { id: 6, name: "Katılımcılarla iletişim" },
+    { id: 7, name: "Ses tonu ayarlama" },
+    { id: 8, name: "Beden dili kullanımı" },
+    { id: 9, name: "Kıyafet uygunluğu" },
+    { id: 10, name: "Göz teması" }
+  ];
+
+  let competitors = [];
+  let results = [];
+  let currentStudentNo = null;
+  let currentStudentCanVote = false;
+  let currentStudentHasVoted = false;
+  let adminLoggedIn = false;
+  let pendingDeleteId = null;
+
+  function refreshIcons() {
+    if (typeof lucide !== "undefined") {
+      lucide.createIcons();
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", async () => {
+    refreshIcons();
+    renderCriteria();
+    await initializeApp();
+
+    document.getElementById('presentationSelect').addEventListener('change', function() {
+        const criteriaSec = document.getElementById('criteriaSection');
+        if(this.value) {
+            criteriaSec.classList.remove('hidden');
+        } else {
+            criteriaSec.classList.add('hidden');
+        }
+    });
+  });
+
+  function renderCriteria() {
+      const container = document.getElementById('criteriaContainer');
+      container.innerHTML = CRITERIA.map(c => `
+        <div class="mb-2">
+          <div class="flex justify-between items-center mb-1">
+            <label class="text-sm font-medium text-gray-700">${c.id}. ${c.name}</label>
+            <span id="val_crit${c.id}" class="text-lg font-bold text-blue-600 bg-white px-2 py-0.5 rounded shadow-sm border border-blue-100">5</span>
+          </div>
+          <input type="range" min="1" max="10" value="5" step="1" id="crit${c.id}" class="criteria-slider" oninput="updateScoreVal(${c.id}, this.value)">
+        </div>
+      `).join('');
+  }
+
+  function updateScoreVal(id, val) {
+      document.getElementById(`val_crit${id}`).innerText = val;
+      calculateTotalLiveScore();
+  }
+
+  function calculateTotalLiveScore() {
+      let total = 0;
+      document.querySelectorAll('.criteria-slider').forEach(slider => {
+          total += parseInt(slider.value);
+      });
+      document.getElementById('liveTotalScore').innerText = total;
+  }
+
+  async function initializeApp() {
+    await refreshAllData();
+
+    supabaseClient
+      .channel("realtime-voting")
+      .on("postgres_changes", { event: "*", schema: "public", table: "competitors" }, async () => {
+        await refreshAllData();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "scores" }, async () => {
+        await refreshAllData();
+      })
+      .on("postgres_changes", { event: "*", schema: "public", table: "kullanicilar" }, async () => {
+        await refreshAllData();
+      })
+      .subscribe();
+  }
+
+  function showToast(msg, type = "success") {
+    const t = document.getElementById("toast");
+    const colors = type === "success" ? "bg-green-600" : type === "error" ? "bg-red-500" : "bg-blue-600";
+    t.innerHTML = `<div class="toast-slide ${colors} text-white px-6 py-3 rounded-xl shadow-lg font-medium text-sm">${msg}</div>`;
+    t.classList.remove("hidden");
+    setTimeout(() => t.classList.add("hidden"), 3000);
+    refreshIcons();
+  }
+
+  function setText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+  }
+
+  function getScoreForCompetitor(competitorId) {
+    // Burada tablonuzdan gelen sonuca göre toplam puanı alıyoruz. (eskiden vote_count idi, total_score olarak değişti)
+    const row = results.find(r => Number(r.competitor_id) === Number(competitorId));
+    return row ? Number(row.total_score || 0) : 0;
+  }
+
+  function escapeHtml(text) {
+    return String(text ?? "")
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("'", "&#039;");
+  }
+
+  async function refreshAllData() {
+    try {
+      const [{ data: compData, error: compErr }, { data: resData, error: resErr }] = await Promise.all([
+        supabaseClient
+          .from("competitors")
+          .select("*")
+          .eq("is_active", true)
+          .order("id", { ascending: true }),
+
+        // Veritabanında results view'ınızı total_score döndürecek şekilde güncellediğinizi varsayıyoruz
+        supabaseClient
+          .from("results")
+          .select("*")
+          .order("total_score", { ascending: false }) 
+      ]);
+
+      if (compErr) throw compErr;
+      if (resErr) throw resErr;
+
+      competitors = compData || [];
+      results = resData || [];
+
+      renderVotingView();
+      if (adminLoggedIn) renderAdminDashboard();
+      refreshIcons();
+    } catch (error) {
+      console.error(error);
+      showToast("Veriler yüklenirken hata oluştu.", "error");
+    }
+  }
+
+  async function submitStudentId() {
+    const studentNo = document.getElementById("studentIdInput").value.trim();
+    const msg = document.getElementById("voteMessage");
+
+    if (!studentNo || studentNo.length < 3) {
+      msg.textContent = "Lütfen geçerli bir okul numarası girin.";
+      msg.className = "text-sm mt-2 text-red-500";
+      return;
+    }
+
+    try {
+      document.getElementById("studentIdSubmit").disabled = true;
+      document.getElementById("studentIdSubmit").textContent = "Kontrol ediliyor...";
+
+      const { data, error } = await supabaseClient.rpc("check_student_status", {
+        p_student_no: studentNo
+      });
+
+      if (error) throw error;
+
+      currentStudentNo = studentNo;
+      currentStudentHasVoted = !!data?.has_voted;
+      currentStudentCanVote = !currentStudentHasVoted;
+
+      if (currentStudentHasVoted) {
+        msg.textContent = "Bu öğrenci numarası ile daha önce puanlama yapılmış.";
+        msg.className = "text-sm mt-2 text-orange-500";
+        document.getElementById("studentStep2").classList.add("hidden");
+        showToast("Bu numara daha önce puan vermiş.", "error");
+      } else {
+        msg.textContent = "Numara onaylandı. Lütfen değerlendirmenizi yapın.";
+        msg.className = "text-sm mt-2 text-green-600";
+
+        document.getElementById("studentFullName").value = data?.full_name || "";
+        fillPresentationSelect();
+        document.getElementById("studentStep2").classList.remove("hidden");
+      }
+    } catch (error) {
+      console.error(error);
+      msg.textContent = "Kontrol sırasında bir hata oluştu.";
+      msg.className = "text-sm mt-2 text-red-500";
+      showToast("Öğrenci kontrolü yapılamadı.", "error");
+    } finally {
+      document.getElementById("studentIdSubmit").disabled = false;
+      document.getElementById("studentIdSubmit").textContent = "Devam Et";
+    }
+  }
+
+  function fillPresentationSelect() {
+    const select = document.getElementById("presentationSelect");
+    select.innerHTML = `<option value="">Değerlendirilecek Sunumu Seçin...</option>`;
+
+    competitors.forEach(c => {
+      const option = document.createElement("option");
+      option.value = c.id;
+      option.textContent = `${c.competitor_name} - ${c.presentation_title}`;
+      select.appendChild(option);
+    });
+  }
+
+  async function submitVote() {
+    const fullName = document.getElementById("studentFullName").value.trim();
+    const competitorId = document.getElementById("presentationSelect").value;
+    const msg = document.getElementById("voteSubmitMessage");
+    const btn = document.getElementById("voteSubmitBtn");
+
+    if (!currentStudentNo) return;
+
+    if (!fullName || !competitorId) {
+      msg.textContent = "Lütfen ad soyad girin ve bir sunum seçin.";
+      msg.className = "text-sm mt-2 text-red-500";
+      return;
+    }
+
+    // Slider değerlerini topla
+    const scoreData = {};
+    let totalScore = 0;
+    CRITERIA.forEach(c => {
+        const val = parseInt(document.getElementById(`crit${c.id}`).value);
+        scoreData[`crit_${c.id}`] = val;
+        totalScore += val;
+    });
+
+    try {
+      btn.disabled = true;
+      btn.textContent = "Puanlar Kaydediliyor...";
+
+      // Veritabanı fonksiyonu "cast_score" olarak güncellenmeli (Aşağıda açıklaması var)
+      const { data, error } = await supabaseClient.rpc("cast_score", {
+        p_student_no: currentStudentNo,
+        p_full_name: fullName,
+        p_competitor_id: Number(competitorId),
+        p_scores: scoreData,
+        p_total: totalScore
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        msg.textContent = "Puanlama başarıyla kaydedildi.";
+        msg.className = "text-sm mt-2 text-green-600";
+        showToast("Puanınız başarıyla kaydedildi! 🎉");
+
+        currentStudentCanVote = false;
+        currentStudentHasVoted = true;
+
+        document.getElementById("studentStep2").classList.add("hidden");
+        document.getElementById("voteMessage").textContent = "Puanlama işleminiz tamamlandı.";
+        document.getElementById("voteMessage").className = "text-sm mt-2 text-green-600";
+
+        await refreshAllData();
+      } else {
+        throw new Error(data?.message || "Kaydedilemedi");
+      }
+    } catch (error) {
+      console.error(error);
+      msg.textContent = "Kayıt sırasında hata oluştu. Veritabanı RPC ayarlarını kontrol edin.";
+      msg.className = "text-sm mt-2 text-red-500";
+      showToast("Puan kaydı başarısız.", "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Puanları Kaydet";
+    }
+  }
+
+  function resetStudentFlow() {
+    currentStudentNo = null;
+    currentStudentCanVote = false;
+    currentStudentHasVoted = false;
+
+    document.getElementById("studentIdInput").value = "";
+    document.getElementById("studentFullName").value = "";
+    document.getElementById("presentationSelect").innerHTML = `<option value="">Değerlendirilecek Sunumu Seçin...</option>`;
+    document.getElementById("voteMessage").textContent = "";
+    document.getElementById("voteSubmitMessage").textContent = "";
+    document.getElementById("criteriaSection").classList.add("hidden");
+    document.getElementById("studentStep2").classList.add("hidden");
+    
+    // Reset sliders
+    CRITERIA.forEach(c => {
+        document.getElementById(`crit${c.id}`).value = 5;
+        document.getElementById(`val_crit${c.id}`).innerText = 5;
+    });
+    calculateTotalLiveScore();
+  }
+
+  function renderVotingView() {
+    const grid = document.getElementById("contestantGrid");
+    const empty = document.getElementById("emptyState");
+
+    setText("contestantCount", competitors.length);
+    setText("totalVotes", results.reduce((sum, r) => sum + Number(r.total_score || 0), 0));
+
+    fillPresentationSelect();
+
+    if (competitors.length === 0) {
+      grid.innerHTML = "";
+      empty.classList.remove("hidden");
+      refreshIcons();
+      return;
+    }
+
+    empty.classList.add("hidden");
+
+    const maxScore = Math.max(...competitors.map(c => getScoreForCompetitor(c.id)), 1);
+
+    grid.innerHTML = competitors.map((c, i) => {
+      const score = getScoreForCompetitor(c.id);
+      const pct = Math.round((score / maxScore) * 100);
+
+      return `
+        <div class="vote-card card-shine rounded-2xl shadow-md border border-blue-100 p-6 fade-in relative group" style="animation-delay:${i * 0.08}s">
+          <div class="absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-blue-400/20 to-transparent rounded-full -translate-y-1/2 translate-x-1/2 group-hover:scale-125 transition-transform duration-500"></div>
+          <div class="relative z-10">
+            <div class="flex items-center gap-4 mb-4">
+              <div class="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 flex items-center justify-center text-white font-bold text-xl shadow-lg border-2 border-blue-300/50">
+                ${escapeHtml((c.competitor_name || "?")[0]?.toUpperCase() || "?")}
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="font-bold text-gray-900 truncate text-lg">${escapeHtml(c.competitor_name)}</div>
+                <div class="text-sm text-gray-500 truncate mt-0.5">${escapeHtml(c.presentation_title || "Sunum adı yok")}</div>
+              </div>
+            </div>
+            <div class="bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl p-3 mb-4">
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-xs font-semibold text-gray-600 uppercase tracking-wide">Toplam Puan</span>
+                <span class="text-2xl font-black text-blue-700">${score}</span>
+              </div>
+              <div class="flex-1 h-3 bg-white rounded-full overflow-hidden shadow-inner">
+                <div class="bar-fill h-full bg-gradient-to-r from-blue-400 via-blue-500 to-blue-600 rounded-full shadow-lg" style="width:${pct}%"></div>
+              </div>
+            </div>
+            <div>
+              <button class="w-full py-3 bg-gradient-to-r from-gray-200 to-gray-300 text-gray-500 rounded-xl text-sm font-bold cursor-default hover:opacity-75 transition">
+                Puan vermek için yukarıdaki formu kullanın
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join("");
+
+    refreshIcons();
+  }
+
+  function toggleAdmin() {
+    const vv = document.getElementById("votingView");
+    const ap = document.getElementById("adminPanel");
+
+    if (ap.classList.contains("hidden")) {
+      vv.classList.add("hidden");
+      ap.classList.remove("hidden");
+
+      if (!adminLoggedIn) {
+        document.getElementById("adminLogin").classList.remove("hidden");
+        document.getElementById("adminDashboard").classList.add("hidden");
+      }
+    } else {
+      ap.classList.add("hidden");
+      vv.classList.remove("hidden");
+    }
+
+    refreshIcons();
+  }
+
+  function loginAdmin() {
+    const pass = document.getElementById("adminPassInput").value;
+    if (pass === ADMIN_PASS) {
+      adminLoggedIn = true;
+      document.getElementById("adminLogin").classList.add("hidden");
+      document.getElementById("adminDashboard").classList.remove("hidden");
+      document.getElementById("adminError").classList.add("hidden");
+      renderAdminDashboard();
+    } else {
+      document.getElementById("adminError").classList.remove("hidden");
+    }
+  }
+
+  function logoutAdmin() {
+    adminLoggedIn = false;
+    document.getElementById("adminPassInput").value = "";
+    toggleAdmin();
+  }
+
+  function renderAdminDashboard() {
+    const list = document.getElementById("adminContestantList");
+    const ae = document.getElementById("adminEmpty");
+    const resultsChart = document.getElementById("resultsChart");
+    const re = document.getElementById("resultsEmpty");
+
+    if (competitors.length === 0) {
+      list.innerHTML = "";
+      ae.classList.remove("hidden");
+    } else {
+      ae.classList.add("hidden");
+
+      list.innerHTML = competitors.map(c => {
+        const vc = getScoreForCompetitor(c.id);
+
+        return `
+          <div class="flex items-center gap-3 p-4 bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl border-l-4 border-blue-500 shadow-sm hover:shadow-md transition">
+            <div class="w-11 h-11 rounded-full bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center text-white font-bold text-lg shadow-md">
+              ${escapeHtml((c.competitor_name || "?")[0]?.toUpperCase() || "?")}
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="font-bold text-gray-900 truncate">${escapeHtml(c.competitor_name)}</div>
+              <div class="text-sm text-gray-600 truncate">📊 ${escapeHtml(c.presentation_title || "Sunum yok")} • <span class="font-bold text-blue-600">${vc}</span> Puan</div>
+            </div>
+            <button onclick="editContestant(${c.id})" class="p-2 text-blue-500 hover:bg-blue-200 rounded-lg transition">
+              <i data-lucide="edit" style="width:18px;height:18px;"></i>
+            </button>
+            <button onclick="confirmDeleteContestant(${c.id})" class="p-2 text-red-400 hover:bg-red-100 rounded-lg transition">
+              <i data-lucide="x-circle" style="width:18px;height:18px;"></i>
+            </button>
+          </div>
+        `;
+      }).join("");
+    }
+
+    if (!results.length || results.every(r => Number(r.total_score) === 0)) {
+      resultsChart.innerHTML = "";
+      re.classList.remove("hidden");
+    } else {
+      re.classList.add("hidden");
+
+      const maxV = Math.max(...results.map(r => Number(r.total_score || 0)), 1);
+
+      resultsChart.innerHTML = results.map((r, i) => {
+        const vc = Number(r.total_score || 0);
+        const pct = Math.round((vc / maxV) * 100);
+        const medals = ["🥇", "🥈", "🥉"];
+        const medal = medals[i] || "🏅";
+
+        return `
+          <div class="p-4 bg-gradient-to-r from-white to-blue-50 rounded-xl border-l-4 border-blue-400 hover:shadow-lg transition">
+            <div class="flex justify-between items-center mb-2">
+              <div class="flex items-center gap-2">
+                <span class="medal-badge">${medal}</span>
+                <span class="font-bold text-gray-900 text-lg">${escapeHtml(r.competitor_name)}</span>
+              </div>
+              <span class="text-blue-700 font-black text-2xl">${vc} Pts</span>
+            </div>
+            <div class="text-sm text-gray-500 mb-2">${escapeHtml(r.presentation_title)}</div>
+            <div class="h-4 bg-white rounded-full overflow-hidden border border-blue-200 shadow-inner">
+              <div class="bar-fill h-full bg-gradient-to-r from-blue-400 via-blue-500 to-blue-600 rounded-full shadow-md" style="width:${pct}%"></div>
+            </div>
+            <div class="text-xs text-gray-600 font-semibold mt-2">%${pct}</div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    refreshIcons();
+  }
+
+  // --- Diğer admin fonksiyonları (Ekle, Düzenle, Sil) eski kod ile tamamen aynıdır ---
+  async function addContestant() {
+    const nameEl = document.getElementById("newContestantName");
+    const topicEl = document.getElementById("newContestantTopic");
+    const msg = document.getElementById("addMessage");
+    const btn = document.getElementById("addContestantBtn");
+
+    const name = nameEl.value.trim();
+    const topic = topicEl.value.trim();
+
+    if (!name || !topic) {
+      msg.textContent = "Lütfen yarışmacı adı ve sunum adı girin.";
+      msg.className = "text-sm mt-2 text-red-500";
+      return;
+    }
+
+    try {
+      btn.disabled = true;
+      btn.textContent = "Ekleniyor...";
+      const { error } = await supabaseClient.from("competitors").insert({ competitor_name: name, presentation_title: topic });
+      if (error) throw error;
+      nameEl.value = ""; topicEl.value = "";
+      msg.textContent = `${name} eklendi.`; msg.className = "text-sm mt-2 text-green-600";
+      showToast(`${name} yarışmacı olarak eklendi! ✅`);
+      await refreshAllData();
+    } catch (error) {
+      msg.textContent = "Yarışmacı eklenirken hata oluştu."; msg.className = "text-sm mt-2 text-red-500"; showToast("Yarışmacı eklenemedi.", "error");
+    } finally { btn.disabled = false; btn.textContent = "Ekle"; }
+  }
+
+  function editContestant(id) {
+    const c = competitors.find(x => Number(x.id) === Number(id));
+    if (!c) return;
+    const list = document.getElementById("adminContestantList");
+    const cards = [...list.children];
+    const targetCard = cards.find(el => el.innerHTML.includes(`editContestant(${id})`));
+    if (!targetCard) return;
+
+    const editDiv = document.createElement("div");
+    editDiv.className = "p-4 bg-yellow-50 border-2 border-yellow-200 rounded-xl";
+    editDiv.innerHTML = `
+      <div class="flex flex-col gap-2">
+        <input id="editName_${id}" value="${escapeHtml(c.competitor_name)}" class="px-3 py-2 rounded-lg border border-yellow-300 outline-none" placeholder="İsim">
+        <input id="editTopic_${id}" value="${escapeHtml(c.presentation_title)}" class="px-3 py-2 rounded-lg border border-yellow-300 outline-none" placeholder="Sunum adı">
+        <div class="flex gap-2">
+          <button onclick="saveEdit(${id})" class="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">Kaydet</button>
+          <button onclick="renderAdminDashboard()" class="flex-1 py-2 bg-gray-200 text-gray-600 rounded-lg text-sm font-medium">İptal</button>
+        </div>
+      </div>
+    `;
+    targetCard.replaceWith(editDiv); refreshIcons();
+  }
+
+  async function saveEdit(id) {
+    const name = document.getElementById(`editName_${id}`).value.trim();
+    const topic = document.getElementById(`editTopic_${id}`).value.trim();
+    if (!name || !topic) { showToast("İsim ve sunum adı boş olamaz.", "error"); return; }
+    try {
+      const { error } = await supabaseClient.from("competitors").update({ competitor_name: name, presentation_title: topic }).eq("id", id);
+      if (error) throw error;
+      showToast("Yarışmacı güncellendi ✏️"); await refreshAllData();
+    } catch (error) { showToast("Güncelleme hatası.", "error"); }
+  }
+
+  function confirmDeleteContestant(id) {
+    if (pendingDeleteId === id) return; pendingDeleteId = id;
+    const list = document.getElementById("adminContestantList");
+    const card = [...list.children].find(el => el.innerHTML.includes(`confirmDeleteContestant(${id})`));
+    if (!card) return;
+    const left = card.querySelector(".flex-1.min-w-0");
+    if (!left) return;
+    left.innerHTML = `
+      <div class="text-red-600 text-sm font-medium">Silmek istediğinize emin misiniz?</div>
+      <div class="flex gap-2 mt-1">
+        <button onclick="deleteContestant(${id})" class="px-3 py-1 bg-red-500 text-white rounded text-xs">Evet</button>
+        <button onclick="pendingDeleteId=null;renderAdminDashboard()" class="px-3 py-1 bg-gray-200 text-gray-600 rounded text-xs">Hayır</button>
+      </div>
+    `; refreshIcons();
+  }
+
+  async function deleteContestant(id) {
+    try {
+      const score = getScoreForCompetitor(id);
+      if (score > 0) { showToast("Puan almış yarışmacı silinemez. Önce puanları sıfırlayın.", "error"); pendingDeleteId = null; return; }
+      const { error } = await supabaseClient.from("competitors").delete().eq("id", id);
+      if (error) throw error;
+      pendingDeleteId = null; showToast("Yarışmacı silindi 🗑️"); await refreshAllData();
+    } catch (error) { showToast("Yarışmacı silinemedi.", "error"); }
+  }
+
+  function showResetConfirm() { document.getElementById("resetConfirm").classList.remove("hidden"); }
+  function hideResetConfirm() { document.getElementById("resetConfirm").classList.add("hidden"); }
+  async function resetAllVotes() {
+    try {
+      const { error } = await supabaseClient.rpc("reset_all_votes");
+      if (error) throw error;
+      hideResetConfirm(); showToast("Tüm puanlar sıfırlandı 🔄"); await refreshAllData();
+    } catch (error) { showToast("Puanlar sıfırlanamadı.", "error"); }
+  }
+</script>
+</body>
+</html>
