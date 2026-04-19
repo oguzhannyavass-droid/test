@@ -598,7 +598,7 @@
       }
     } catch (error) {
       console.error(error);
-      msg.textContent = "Kayıt sırasında hata oluştu. Veritabanı RPC ayarlarını kontrol edin.";
+      msg.textContent = "Daha önce puanlama yaptınız.";
       msg.className = "text-sm mt-2 text-red-500";
       showToast("Puan kaydı başarısız.", "error");
     } finally {
